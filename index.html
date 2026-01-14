@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Teleprompter System</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; text-align: center; }
+        .hidden { display: none !important; }
+        #display-box { height: 100vh; width: 100vw; overflow-y: scroll; padding: 50px; text-align: left; white-space: pre-wrap; box-sizing: border-box; }
+        .mirrored { transform: scaleX(-1); }
+        button { padding: 20px; font-size: 20px; margin: 10px; cursor: pointer; border-radius: 12px; border: none; width: 280px; font-weight: bold; }
+        .btn-remote { background: #007bff; color: white; }
+        .btn-screen { background: #28a745; color: white; }
+        .remote-ui { background: #1a1a1a; padding: 25px; border-radius: 20px; width: 90%; max-width: 400px; text-align: left; }
+        textarea { width: 100%; height: 150px; margin: 10px 0; border-radius: 8px; padding: 10px; box-sizing: border-box; }
+        input[type="range"] { width: 100%; }
+        #status-bar { position: fixed; top: 0; width: 100%; background: #333; font-size: 14px; padding: 5px; }
+    </style>
+</head>
+<body>
+
+    <div id="setup-screen">
+        <h1>Prompter Setup</h1>
+        <button class="btn-screen" onclick="initDisplay()">STEP 1: USE AS IPAD</button>
+        <button class="btn-remote" onclick="initRemote()">STEP 2: USE AS IPHONE</button>
+    </div>
+
+    <div id="display-mode" class="hidden">
+        <div id="status-bar">ID: Loading...</div>
+        <div id="display-box">Your script will appear here...</div>
+    </div>
+
+    <div id="remote-mode" class="hidden">
+        <div class="remote-ui">
+            <h3>Remote Control</h3>
+            <input type="text" id="target-id" placeholder="Enter ID from iPad" style="width:70%; padding:10px;">
+            <button onclick="connectToiPad()" style="width:25%; padding:10px; font-size:14px;">Link</button>
+            <hr>
+            <textarea id="script" placeholder="Paste script here..."></textarea>
+            <p>Font Size: <input type="range" id="size" min="20" max="200" value="70" oninput="update()"></p>
+            <p>Scroll Speed: <input type="range" id="speed" min="0" max="10" value="0" oninput="update()"></p>
+            <p><label><input type="checkbox" id="mirror" onchange="update()"> Mirror Mode (for glass)</label></p>
+            <button onclick="update()" style="background:#28a745; color:white; width:100%;">PUSH TO IPAD</button>
+        </div>
+    </div>
+
+    <script>
+        const peer = new Peer();
+        let connection;
+        let scrollTimer;
+
+        function initDisplay() {
+            document.getElementById('setup-screen').classList.add('hidden');
+            document.getElementById('display-mode').classList.remove('hidden');
+            peer.on('open', id => document.getElementById('status-bar').innerText = "iPad ID: " + id);
+            peer.on('connection', conn => {
+                conn.on('data', data => {
+                    const box = document.getElementById('display-box');
+                    if(data.text) box.innerText = data.text;
+                    box.style.fontSize = data.size + 'px';
+                    box.classList.toggle('mirrored', data.mirror);
+                    clearInterval(scrollTimer);
+                    if(data.speed > 0) {
+                        scrollTimer = setInterval(() => { box.scrollTop += 1; }, 150 / data.speed);
+                    }
+                });
+            });
+        }
+
+        function initRemote() {
+            document.getElementById('setup-screen').classList.add('hidden');
+            document.getElementById('remote-mode').classList.remove('hidden');
+        }
+
+        function connectToiPad() {
+            const id = document.getElementById('target-id').value;
+            connection = peer.connect(id);
+            alert("Linked to iPad!");
+        }
+
+        function update() {
+            if(connection) {
+                connection.send({
+                    text: document.getElementById('script').value,
+                    size: document.getElementById('size').value,
+                    speed: document.getElementById('speed').value,
+                    mirror: document.getElementById('mirror').checked
+                });
+            }
+        }
+    </script>
+</body>
+</html>
