@@ -1,89 +1,130 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Teleprompter System</title>
+    <title>Easy Teleprompter</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         body { background: #000; color: #fff; font-family: sans-serif; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; text-align: center; }
         .hidden { display: none !important; }
-        #display-box { height: 100vh; width: 100vw; overflow-y: scroll; padding: 50px; text-align: left; white-space: pre-wrap; box-sizing: border-box; }
+        
+        /* SETUP SCREEN */
+        .setup-card { background: #222; padding: 40px; border-radius: 20px; border: 2px solid #444; width: 90%; max-width: 500px; }
+        input#room-input { width: 100%; padding: 20px; font-size: 24px; border-radius: 10px; border: none; margin: 20px 0; text-align: center; box-sizing: border-box; }
+        
+        /* BUTTONS */
+        button { padding: 20px; font-size: 20px; margin: 10px 0; cursor: pointer; border-radius: 12px; border: none; width: 100%; font-weight: bold; transition: 0.2s; }
+        .btn-green { background: #28a745; color: white; }
+        .btn-blue { background: #007bff; color: white; }
+        button:active { transform: scale(0.98); opacity: 0.8; }
+
+        /* IPAD VIEW */
+        #display-box { height: 100vh; width: 100vw; overflow-y: scroll; padding: 60px; text-align: left; white-space: pre-wrap; box-sizing: border-box; line-height: 1.3; }
         .mirrored { transform: scaleX(-1); }
-        button { padding: 20px; font-size: 20px; margin: 10px; cursor: pointer; border-radius: 12px; border: none; width: 280px; font-weight: bold; }
-        .btn-remote { background: #007bff; color: white; }
-        .btn-screen { background: #28a745; color: white; }
-        .remote-ui { background: #1a1a1a; padding: 25px; border-radius: 20px; width: 90%; max-width: 400px; text-align: left; }
-        textarea { width: 100%; height: 150px; margin: 10px 0; border-radius: 8px; padding: 10px; box-sizing: border-box; }
-        input[type="range"] { width: 100%; }
-        #status-bar { position: fixed; top: 0; width: 100%; background: #333; font-size: 14px; padding: 5px; }
+
+        /* IPHONE VIEW */
+        .remote-ui { background: #1a1a1a; padding: 20px; width: 95%; max-width: 400px; text-align: left; border-radius: 15px; }
+        textarea { width: 100%; height: 200px; margin: 10px 0; border-radius: 8px; padding: 15px; background: #333; color: white; border: none; font-size: 16px; box-sizing: border-box; }
+        .slider-label { display: flex; justify-content: space-between; margin-top: 15px; }
     </style>
 </head>
 <body>
 
-    <div id="setup-screen">
-        <h1>Prompter Setup</h1>
-        <button class="btn-screen" onclick="initDisplay()">STEP 1: USE AS IPAD</button>
-        <button class="btn-remote" onclick="initRemote()">STEP 2: USE AS IPHONE</button>
+    <div id="setup-screen" class="setup-card">
+        <h1 style="margin-top:0;">1. Pick a Name</h1>
+        <p>Type any word (no spaces):</p>
+        <input type="text" id="room-input" placeholder="e.g. myvideo123">
+        
+        <hr style="border: 1px solid #444; margin: 20px 0;">
+        
+        <h1>2. Choose Device</h1>
+        <button class="btn-green" onclick="asiPad()">THIS IS THE IPAD</button>
+        <button class="btn-blue" onclick="asiPhone()">THIS IS THE IPHONE</button>
     </div>
 
     <div id="display-mode" class="hidden">
-        <div id="status-bar">ID: Loading...</div>
-        <div id="display-box">Your script will appear here...</div>
+        <div id="display-box">Waiting for script from iPhone...</div>
     </div>
 
     <div id="remote-mode" class="hidden">
         <div class="remote-ui">
-            <h3>Remote Control</h3>
-            <input type="text" id="target-id" placeholder="Enter ID from iPad" style="width:70%; padding:10px;">
-            <button onclick="connectToiPad()" style="width:25%; padding:10px; font-size:14px;">Link</button>
-            <hr>
-            <textarea id="script" placeholder="Paste script here..."></textarea>
-            <p>Font Size: <input type="range" id="size" min="20" max="200" value="70" oninput="update()"></p>
-            <p>Scroll Speed: <input type="range" id="speed" min="0" max="10" value="0" oninput="update()"></p>
-            <p><label><input type="checkbox" id="mirror" onchange="update()"> Mirror Mode (for glass)</label></p>
-            <button onclick="update()" style="background:#28a745; color:white; width:100%;">PUSH TO IPAD</button>
+            <h2 style="margin:0;">Remote Control</h2>
+            <p id="conn-status" style="color: orange;">🔴 Not Linked</p>
+            <button class="btn-blue" onclick="connectToiPad()" style="padding:10px;">TAP TO LINK TO IPAD</button>
+            
+            <textarea id="script" placeholder="Paste script here..." oninput="update()"></textarea>
+            
+            <div class="slider-label"><span>Font Size</span><span id="size-val">80</span></div>
+            <input type="range" id="size" min="30" max="300" value="80" style="width:100%" oninput="update()">
+            
+            <div class="slider-label"><span>Scroll Speed</span><span id="speed-val">0</span></div>
+            <input type="range" id="speed" min="0" max="10" value="0" step="0.5" style="width:100%" oninput="update()">
+            
+            <p><label><input type="checkbox" id="mirror" onchange="update()"> Mirror Mode (Glass)</label></p>
         </div>
     </div>
 
     <script>
-        const peer = new Peer();
+        let peer;
         let connection;
         let scrollTimer;
 
-        function initDisplay() {
+        function asiPad() {
+            const name = document.getElementById('room-input').value.trim().toLowerCase();
+            if(!name) return alert("Please type a name first!");
+            
+            peer = new Peer(name); // Uses your custom name
             document.getElementById('setup-screen').classList.add('hidden');
             document.getElementById('display-mode').classList.remove('hidden');
-            peer.on('open', id => document.getElementById('status-bar').innerText = "iPad ID: " + id);
+
+            peer.on('open', () => console.log("iPad ready as: " + name));
+            peer.on('error', (err) => {
+                if(err.type === 'unavailable-id') alert("That name is taken. Refresh and try another word.");
+            });
+
             peer.on('connection', conn => {
                 conn.on('data', data => {
                     const box = document.getElementById('display-box');
-                    if(data.text) box.innerText = data.text;
+                    if(data.text !== undefined) box.innerText = data.text;
                     box.style.fontSize = data.size + 'px';
                     box.classList.toggle('mirrored', data.mirror);
                     clearInterval(scrollTimer);
                     if(data.speed > 0) {
-                        scrollTimer = setInterval(() => { box.scrollTop += 1; }, 150 / data.speed);
+                        scrollTimer = setInterval(() => { box.scrollTop += 1; }, 100 / data.speed);
                     }
                 });
             });
         }
 
-        function initRemote() {
+        function asiPhone() {
+            const name = document.getElementById('room-input').value.trim().toLowerCase();
+            if(!name) return alert("Please type the name first!");
+            
+            peer = new Peer(); // Random ID for iPhone
             document.getElementById('setup-screen').classList.add('hidden');
             document.getElementById('remote-mode').classList.remove('hidden');
         }
 
         function connectToiPad() {
-            const id = document.getElementById('target-id').value;
-            connection = peer.connect(id);
-            alert("Linked to iPad!");
+            const name = document.getElementById('room-input').value.trim().toLowerCase();
+            connection = peer.connect(name);
+            connection.on('open', () => {
+                document.getElementById('conn-status').innerText = "🟢 Linked to iPad";
+                document.getElementById('conn-status').style.color = "#28a745";
+                update();
+            });
         }
 
         function update() {
+            const s = document.getElementById('size').value;
+            const sp = document.getElementById('speed').value;
+            document.getElementById('size-val').innerText = s;
+            document.getElementById('speed-val').innerText = sp;
+
             if(connection) {
                 connection.send({
                     text: document.getElementById('script').value,
-                    size: document.getElementById('size').value,
-                    speed: document.getElementById('speed').value,
+                    size: s,
+                    speed: sp,
                     mirror: document.getElementById('mirror').checked
                 });
             }
